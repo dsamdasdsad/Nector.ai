@@ -1,0 +1,147 @@
+#User Registration (Models Page)
+User fills form:
+    - Model name
+    - Model type (dropdown: Together.ai, OpenAI, Claude, etc.)
+    - API key
+    - Default temperature
+    - Default max_tokens
+    
+    Optional: Show "Advanced Settings" expander
+        - top_p
+        - top_k
+        - repetition_penalty
+        - etc.
+
+When submitted:
+    Store ALL settings in session_state.models as dictionary
+
+#Workflow Creation
+User creates workflow:
+    - Select which registered model to use
+    - Can override default parameters per step
+    
+Store in session_state.workflows
+
+#Workflow Execution
+For each step:
+    Get model settings from session_state.models
+    Get step-specific overrides (if any)
+    Merge settings
+    Make API call with merged settings
+    Store result
+
+# Model Registration
+WHEN user fills "Add Model" form:
+    
+    Get basic inputs:
+        model_name = from text input
+        model_type = from dropdown ("Together.ai", "OpenAI", etc.)
+        api_key = from password input
+        model_id = from text input (e.g., "meta-llama/Llama-2-70b")
+    
+    Get standard parameters:
+        temperature = from slider (0.0 to 2.0, default 0.7)
+        max_tokens = from number input (100 to 4000, default 1000)
+    
+    IF user clicks "Show Advanced Settings":
+        Get advanced parameters:
+            top_p = from slider (0.0 to 1.0, default 1.0)
+            top_k = from number input (0 to 100, default 50)
+            repetition_penalty = from slider (1.0 to 2.0, default 1.0)
+            presence_penalty = from slider (-2.0 to 2.0, default 0.0)
+    
+    Create model dictionary:
+        new_model = {
+            'name': model_name,
+            'type': model_type,
+            'api_key': api_key,
+            'model_id': model_id,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'advanced': {
+                'top_p': top_p,
+                'top_k': top_k,
+                'repetition_penalty': repetition_penalty,
+                'presence_penalty': presence_penalty
+            }
+        }
+    
+    Add to session state:
+        st.session_state.models.append(new_model)
+    
+    Show success message
+
+#API Call Function
+FUNCTION call_together_ai(model_settings, user_prompt):
+    
+    Extract settings from dictionary:
+        api_key = model_settings['api_key']
+        model_id = model_settings['model_id']
+        temperature = model_settings['temperature']
+        max_tokens = model_settings['max_tokens']
+        advanced = model_settings.get('advanced', {})
+    
+    Build headers:
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+    
+    Build payload:
+        payload = {
+            'model': model_id,
+            'messages': [{'role': 'user', 'content': user_prompt}],
+            'temperature': temperature,
+            'max_tokens': max_tokens
+        }
+        
+        IF advanced settings exist:
+            Add to payload:
+                payload['top_p'] = advanced.get('top_p', 1.0)
+                payload['top_k'] = advanced.get('top_k', 50)
+                # etc.
+    
+    Make API request:
+        TRY:
+            response = requests.post(
+                url='https://api.together.xyz/v1/chat/completions',
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            IF response.status_code == 200:
+                data = response.json()
+                ai_text = extract from data
+                RETURN ai_text
+            ELSE:
+                RETURN error message with status code
+        
+        EXCEPT connection error:
+            RETURN "Connection failed"
+        EXCEPT timeout:
+            RETURN "Request timed out"
+
+#UI Design Concept
+Basic Settings (always visible):
+    - Model Name
+    - Model Type
+    - API Key
+    - Temperature
+    - Max Tokens
+
+Expandable Section:
+    "⚙️ Advanced Settings" (collapsed by default)
+    
+    When expanded, shows:
+        - Top P
+        - Top K
+        - Repetition Penalty
+        - Presence Penalty
+        - Safety Model (optional)
+        - Reasoning Effort
+        - Response Format
+
+#streamlit
+with st.expander("⚙️ Advanced Settings"):
+    # All advanced parameter widgets here
