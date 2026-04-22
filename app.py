@@ -1,36 +1,103 @@
-from logging import PlaceHolder
-from unittest import result
 import streamlit as st
-import json
-import os
-import time
 
-# Configure the page
+# Function that calls the model provider
+# parameters are settings of the model
+# returns the model's output
+def call_together_ai(api_key, model_name, prompt, temperature, max_tokens):
+    """Call Together.ai API"""
+    import requests
+    
+    url = "https://api.together.xyz/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": int(max_tokens)
+    }
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data['choices'][0]['message']['content']
+        else:
+            return f"Error: Status {response.status_code}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# Some AI will have thinking outputs that bugs the output, this function clears it
+# parameters are the messages with the thinking output
+# returns the messages without the thinking output
+def clean_response(text):
+    """Remove think blocks from AI responses"""
+    import re
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    cleaned = cleaned.strip()
+    return cleaned if cleaned else text
+
+# this procedure loops the user inputs
+# start_text is the user inputted text, step_list is how many steps in the loop, and model_list is the models used in the loop
+# it returns all the responses in the workflow
+def run_pipeline(start_text, step_list, model_list):
+    """
+    Takes input and runs it through a sequence of AI prompts.
+    Returns a list of results from each step.
+    """
+    current_text = start_text
+    all_results = []
+    
+    for i, step_info in enumerate(step_list):
+        
+        chosen_model = None
+        for m in model_list:
+            if m['name'] == step_info['model']:
+                chosen_model = m
+                break
+                
+        if chosen_model is None:
+            all_results.append(f"Error: Model {step_info['model']} missing.")
+            return all_results
+
+        full_prompt = step_info['prompt'] + "\n\nInput: " + current_text
+        raw_output = call_together_ai(
+            chosen_model['api_key'], chosen_model['endpoint'], 
+            full_prompt, chosen_model['temperature'], chosen_model['max_tokens']
+        )
+        
+        clean_output = clean_response(raw_output)
+        
+        all_results.append(clean_output)
+        current_text = clean_output 
+        
+    return all_results
+
 st.set_page_config(
     page_title="Nector AI",
     page_icon="🔗",
     layout="wide"
 )
 
-# Initialize session state for storing data
 if 'models' not in st.session_state:
     st.session_state.models = []
 
 if 'workflows' not in st.session_state:
     st.session_state.workflows = []
 
-# Main title
 st.title("🔗 Nector AI")
 st.markdown("### Connect and orchestrate AI models")
 
-# Sidebar navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.selectbox(
     "Choose a page:",
     ["Dashboard", "Models", "Workflows"]
 )
 
-# Dashboard Page
 if page == "Dashboard":
     st.header("📊 Dashboard")
     
@@ -52,11 +119,8 @@ if page == "Dashboard":
     3. Run your workflow and see the results!
     """)
 
-# Models Page
 elif page == "Models":
-    st.header("🤖 AI Models")
-    
-    # Show existing models
+    st.header("AI Models")
     if st.session_state.models:
         st.subheader("Registered Models")
         for i, model in enumerate(st.session_state.models):
@@ -65,9 +129,8 @@ elif page == "Models":
                 st.write(f"**Endpoint:** {model.get('endpoint', 'Default')}")
                 if st.button(f"Delete {model['name']}", key=f"delete_{i}"):
                     st.session_state.models.pop(i)
-                    st.experimental_rerun()
-    
-    # Add new model form
+                    st.rerun()
+
     st.subheader("Add New Model")
     
     with st.form("add_model"):
@@ -75,12 +138,12 @@ elif page == "Models":
         
         model_type = st.selectbox(
             "Model Type",
-            ["OpenAI", "Anthropic", "Local (Ollama)", "Custom API"]
+            ["OpenAI", "Together Ai", "Local (Ollama)", "Custom API"]
         )
         
         api_endpoint = st.text_input(
             "API Endpoint", 
-            placeholder="e.g., https://api.openai.com/v1/chat/completions"
+            placeholder="e.g., meta-llama/Llama-2-7b-chat-hf", help="Together.ai model identifier (find in their model catalog)"
         )
         
         api_key = st.text_input(
@@ -108,7 +171,7 @@ elif page == "Models":
             }
             st.session_state.models.append(new_model)
             st.success(f"✅ Model '{model_name}' added successfully!")
-            st.experimental_rerun()
+            st.rerun()
         elif submitted:
             st.error("Please fill in Model Name and API Key")
 
@@ -127,17 +190,36 @@ elif page == "Models":
         )
 
         if st.button("Test Connection"):
-            if model_textinput:   # type: ignore
-                with st.spinner("Loading... Please wait."):
-                    time.sleep(3)  # 3-second delay  
-                test_response = f"I'm {model_selectbox} and I received: {model_textinput}. This is a demo"
-                st.success("Demo success")
-                st.info(f"📝 Response: {test_response}")
-
+            if model_textinput:
+                
+                selected_model = None
+                for model in st.session_state.models:
+                    if model['name'] == model_selectbox:
+                        selected_model = model
+                        break
+                
+                with st.spinner("Connecting to AI..."):
+                    test_response = call_together_ai(
+                        api_key=selected_model['api_key'],
+                        model_name=selected_model['endpoint'],
+                        prompt=model_textinput,
+                        temperature=selected_model['temperature'],
+                        max_tokens=selected_model['max_tokens']
+                    )
+                
+                if test_response.startswith("Error:"):
+                    st.error(f"❌ {test_response}")
+                else:
+                    cleaned_response = clean_response(test_response)  
+                    st.success("✅ Connection successful!")
+                    st.info(f"📝 Response from {model_selectbox}:")
+                    st.write(cleaned_response)  
             else:
                 st.error("Please enter a test prompt")
+            
+    
 
-# Workflows Page
+        
 elif page == "Workflows":
     st.header("⚙️ Workflows")
     
@@ -145,7 +227,6 @@ elif page == "Workflows":
         st.warning("⚠️ Please add some models first in the Models page!")
         st.stop()
     
-    # Show existing workflows
     if st.session_state.workflows:
         st.subheader("Existing Workflows")
         for i, workflow in enumerate(st.session_state.workflows):
@@ -163,51 +244,19 @@ elif page == "Workflows":
                 if st.button(f"Run {workflow['name']}", key=f"run_{i}"):
                     if workflow_input:
                         st.subheader(f"Running: {workflow['name']}")
+                        output_list = run_pipeline(workflow_input, workflow['steps'], st.session_state.models)
                         
-                        progress_bar = st.progress(0)
-                        
-                        current_workflow = st.session_state.workflows[i]
-                        total_steps = len(current_workflow['steps'])
-                        
-                        results = []
-                        previous_output = workflow_input
-                        
-                        for step_num, step in enumerate(current_workflow['steps'], 1):
-                            
-                            st.info(f"⚙️ Step {step_num}: {step['model']}")
-                            
-                            progress_bar.progress(step_num / total_steps)
-                            
-                            time.sleep(1.5)
-                            
-                            fake_output = f"Demo output from {step['model']} (Step {step_num}). Processed: '{previous_output}'"
-                            
-                            results.append({
-                                'step': step_num,
-                                'model': step['model'],
-                                'output': fake_output
-                            })
-                            
-                            st.success(f"✅ Step {step_num} complete!")
-
-                            previous_output = fake_output
-                        
-                        st.success("🎉 Workflow completed! (Demo Mode)")
-                        
-                        with st.expander("📊 View Detailed Results"):
-                            for result in results:
-                                st.write(f"**Step {result['step']} - {result['model']}**")
-                                st.write(result['output'])
-                                st.divider()
-                    
+                        for step_num, result_text in enumerate(output_list, 1):
+                            st.write(f"**Step {step_num}**") 
+                            st.write(result_text) 
+                            st.divider()
                     else:
                         st.warning("⚠️ Please enter input text first")
                 
                 if st.button(f"Delete {workflow['name']}", key=f"delete_workflow_{i}"):
                     st.session_state.workflows.pop(i)
-                    st.experimental_rerun()
+                    st.rerun()
     
-    # Create new workflow
     st.subheader("Create New Workflow")
     
     with st.form("create_workflow"):
@@ -250,11 +299,10 @@ elif page == "Workflows":
             }
             st.session_state.workflows.append(new_workflow)
             st.success(f"✅ Workflow '{workflow_name}' created successfully!")
-            st.experimental_rerun()
+            st.rerun()
         elif submitted:
             st.error("Please enter a workflow name")
 
-# Footer
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Nector AI v1.0**")
-st.sidebar.markdown("Made with ❤️ and Streamlit")
+st.sidebar.markdown("Made with Streamlit")
