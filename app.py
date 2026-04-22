@@ -1,5 +1,35 @@
 import streamlit as st
 
+def test_together_api_direct(api_key):
+    """A minimal test to diagnose 400 errors."""
+    import requests, json
+    url = "https://api.together.xyz/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    # Minimal payload with no optional parameters
+    payload = {
+        "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+        "messages": [{"role": "user", "content": "Say test."}]
+    }
+    
+    print("DEBUG: Sending minimal payload:", json.dumps(payload))
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        print("DEBUG: Status Code:", response.status_code)
+        print("DEBUG: Response Text:", response.text)
+        
+        if response.status_code == 200:
+            print("✅ Diagnostic test PASSED!")
+            return True
+        else:
+            print("❌ Diagnostic test FAILED!")
+            return False
+    except Exception as e:
+        print(f"❌ Diagnostic test ERROR: {e}")
+        return False
+
 # Function that calls the model provider
 # parameters are settings of the model
 # returns the model's output
