@@ -173,7 +173,8 @@ elif page == "Models":
         
         api_endpoint = st.text_input(
             "API Endpoint", 
-            placeholder="e.g., meta-llama/Llama-2-7b-chat-hf", help="Together.ai model identifier (find in their model catalog)"
+            placeholder="e.g., meta-llama/Llama-2-7b-chat-hf", 
+            help="Together.ai model identifier (find in their model catalog)"
         )
         
         api_key = st.text_input(
@@ -246,13 +247,34 @@ elif page == "Models":
                     st.write(cleaned_response)  
             else:
                 st.error("Please enter a test prompt")
-        if st.button("Run API Diagnostic Test"):
-        # Assumes you have at least one model saved with an API key
+        
+        # ✅ Diagnostic button correctly indented inside the Models page
+        if st.button("🔬 Run API Diagnostic (Direct Test)"):
             if st.session_state.models:
                 test_key = st.session_state.models[0]['api_key']
-                with st.spinner("Running diagnostic test..."):
-                    test_together_api_direct(test_key)
-                st.info("Check your terminal or app logs for the diagnostic output.")
+                with st.spinner("Running diagnostic..."):
+                    # Call the diagnostic and capture output
+                    import requests, json
+                    url = "https://api.together.xyz/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {test_key}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+                        "messages": [{"role": "user", "content": "Say test."}]
+                    }
+                    try:
+                        response = requests.post(url, headers=headers, json=payload, timeout=30)
+                        st.write("**Status Code:**", response.status_code)
+                        st.write("**Response Body:**")
+                        st.code(response.text)
+                        if response.status_code == 200:
+                            st.success("✅ Diagnostic PASSED — API works!")
+                        else:
+                            st.error("❌ Diagnostic FAILED — see response above.")
+                    except Exception as e:
+                        st.error(f"❌ Diagnostic ERROR: {e}")
             else:
                 st.warning("Please add a model with an API key first.")
             
