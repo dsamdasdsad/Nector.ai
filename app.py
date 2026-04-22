@@ -250,8 +250,8 @@ elif page == "Workflows":
                             st.write(f"**Step {step_num}**") 
                             st.write(result_text) 
                             st.divider()
-                else:
-                    st.warning("⚠️ Please enter input text first")
+                    else:
+                        st.warning("⚠️ Please enter input text first")
                 
                 if st.button(f"Delete {workflow['name']}", key=f"delete_workflow_{i}"):
                     st.session_state.workflows.pop(i)
