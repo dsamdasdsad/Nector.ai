@@ -248,13 +248,13 @@ elif page == "Models":
                 st.error("Please enter a test prompt")
     if st.button("Run API Diagnostic Test"):
     # Assumes you have at least one model saved with an API key
-    if st.session_state.models:
-        test_key = st.session_state.models[0]['api_key']
-        with st.spinner("Running diagnostic test..."):
-            test_together_api_direct(test_key)
-        st.info("Check your terminal or app logs for the diagnostic output.")
-    else:
-        st.warning("Please add a model with an API key first.")
+        if st.session_state.models:
+            test_key = st.session_state.models[0]['api_key']
+            with st.spinner("Running diagnostic test..."):
+                test_together_api_direct(test_key)
+            st.info("Check your terminal or app logs for the diagnostic output.")
+        else:
+            st.warning("Please add a model with an API key first.")
             
     
 
